@@ -1097,7 +1097,9 @@ static void points_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
     diff_z = current_pose.z - previous_pose.z;
     diff_yaw = current_pose.yaw - previous_pose.yaw;
     diff = sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
-
+    cout<<"diff = "<<diff;
+    cout<<"secs = "<<secs;
+    cout<<"current_velocity = "<<current_velocity;
     current_velocity = diff / secs;
     current_velocity_x = diff_x / secs;
     current_velocity_y = diff_y / secs;
@@ -1142,9 +1144,10 @@ static void points_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
 
     estimated_vel_mps.data = current_velocity;
     estimated_vel_kmph.data = current_velocity * 3.6;
-
     estimated_vel_mps_pub.publish(estimated_vel_mps);
     estimated_vel_kmph_pub.publish(estimated_vel_kmph);
+
+    std::cout<<"("<<current_pose.x<<","<<current_pose.y<<","<<current_pose.z<<")"<<";"<<estimated_vel_kmph.data << ";"<<current_accel<<"\n";
 
     // Set values for publishing pose
     predict_q.setRPY(predict_pose.roll, predict_pose.pitch, predict_pose.yaw);
@@ -1361,26 +1364,26 @@ static void points_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
         << "," << angular_velocity << "," << time_ndt_matching.data << "," << align_time << "," << getFitnessScore_time
         << std::endl;
 
-    std::cout << "-----------------------------------------------------------------" << std::endl;
-    std::cout << "Sequence: " << input->header.seq << std::endl;
-    std::cout << "Timestamp: " << input->header.stamp << std::endl;
-    std::cout << "Frame ID: " << input->header.frame_id << std::endl;
-    //		std::cout << "Number of Scan Points: " << scan_ptr->size() << " points." << std::endl;
-    std::cout << "Number of Filtered Scan Points: " << scan_points_num << " points." << std::endl;
-    std::cout << "NDT has converged: " << has_converged << std::endl;
-    std::cout << "Fitness Score: " << fitness_score << std::endl;
-    std::cout << "Transformation Probability: " << trans_probability << std::endl;
-    std::cout << "Execution Time: " << exe_time << " ms." << std::endl;
-    std::cout << "Number of Iterations: " << iteration << std::endl;
-    std::cout << "NDT Reliability: " << ndt_reliability.data << std::endl;
-    std::cout << "(x,y,z,roll,pitch,yaw): " << std::endl;
-    std::cout << "(" << current_pose.x << ", " << current_pose.y << ", " << current_pose.z << ", " << current_pose.roll
-              << ", " << current_pose.pitch << ", " << current_pose.yaw << ")" << std::endl;
-    std::cout << "Transformation Matrix: " << std::endl;
-    std::cout << t << std::endl;
-    std::cout << "Align time: " << align_time << std::endl;
-    std::cout << "Get fitness score time: " << getFitnessScore_time << std::endl;
-    std::cout << "-----------------------------------------------------------------" << std::endl;
+//    std::cout << "-----------------------------------------------------------------" << std::endl;
+//    std::cout << "Sequence: " << input->header.seq << std::endl;
+//    std::cout << "Timestamp: " << input->header.stamp << std::endl;
+//    std::cout << "Frame ID: " << input->header.frame_id << std::endl;
+//    //		std::cout << "Number of Scan Points: " << scan_ptr->size() << " points." << std::endl;
+//    std::cout << "Number of Filtered Scan Points: " << scan_points_num << " points." << std::endl;
+//    std::cout << "NDT has converged: " << has_converged << std::endl;
+//    std::cout << "Fitness Score: " << fitness_score << std::endl;
+//    std::cout << "Transformation Probability: " << trans_probability << std::endl;
+//    std::cout << "Execution Time: " << exe_time << " ms." << std::endl;
+//    std::cout << "Number of Iterations: " << iteration << std::endl;
+//    std::cout << "NDT Reliability: " << ndt_reliability.data << std::endl;
+//    std::cout << "(x,y,z,roll,pitch,yaw): " << std::endl;
+//    std::cout << "(" << current_pose.x << ", " << current_pose.y << ", " << current_pose.z << ", " << current_pose.roll
+//              << ", " << current_pose.pitch << ", " << current_pose.yaw << ")" << std::endl;
+//    std::cout << "Transformation Matrix: " << std::endl;
+//    std::cout << t << std::endl;
+//    std::cout << "Align time: " << align_time << std::endl;
+//    std::cout << "Get fitness score time: " << getFitnessScore_time << std::endl;
+//    std::cout << "-----------------------------------------------------------------" << std::endl;
 
     // Update offset
     if (_offset == "linear")

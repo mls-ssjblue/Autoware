@@ -19,7 +19,8 @@ find_package(Qt5Core REQUIRED)
 find_package(OpenCV REQUIRED)
 find_package(PCL 1.7 REQUIRED)
 find_package(OpenMP)
-
+FIND_PACKAGE( Boost 1.54 COMPONENTS program_options REQUIRED )
+INCLUDE_DIRECTORIES( ${Boost_INCLUDE_DIR} )
 ###########
 ## Build ##
 ###########
@@ -82,6 +83,7 @@ target_link_libraries(ray_ground_filter_lib
     ${PCL_LIBRARIES}
     ${OpenCV_LIBRARIES}
     ${Qt5Core_LIBRARIES}
+    ${Boost_LIBRARIES}
 )
 
 add_executable(ray_ground_filter

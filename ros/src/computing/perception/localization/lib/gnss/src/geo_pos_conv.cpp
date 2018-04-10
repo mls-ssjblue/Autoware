@@ -28,8 +28,29 @@
  *  OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 */
 
-#include <geo_pos_conv.hh>
+#include <ros/ros.h>
 
+#include <geo_pos_conv.hh>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
+#include<arpa/inet.h> //inet_addr
+#include<netdb.h> //hostent
+#include <iostream>
+#include <pthread.h>
+#include <cstdio>
+#include <cstring>
+#include <cstdlib>
+#include <sys/types.h>
+#include <stdint.h>
+#define PORT 8085
+#define IP "172.20.4.21"
+#define BUSMASTER 0
+using namespace std;
+pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+int threadId = 0;
+int thread_finish = 0;
 double geo_pos_conv::x() const
 {
   return m_x;
@@ -201,22 +222,194 @@ void geo_pos_conv::set_xyz(double cx, double cy, double cz)
   conv_xyz2llh();
 }
 
-void geo_pos_conv::set_llh_nmea_degrees(double latd, double lond, double h)
+uint32_t htonf(float f)
 {
-  double lat, lad, lod, lon;
+	uint32_t p;
+	uint32_t sign;
+
+	if (f < 0) { sign = 1; f = -f; }
+	else { sign = 0; }
+		
+	p = ((((uint32_t)f)&0x7fff)<<16) | (sign<<31); // whole part and sign
+	p |= (uint32_t)(((f - (int)f) * 65536.0f))&0xffff; // fraction
+
+	return p;
+}
+
+float ntohf(uint32_t p)
+{
+	float f = ((p>>16)&0x7fff); // whole part
+	f += (p&0xffff) / 65536.0f; // fraction
+
+	if (((p>>31)&0x1) == 0x1) { f = -f; } // sign bit set
+
+	return f;
+}
+
+
+typedef struct arg_struct
+{
+  float latd;
+  float lond;
+  float h;
+  double* m_lat;
+  double* m_lon;
+  double* m_h;
+  int id;
+}argsStruct;
+
+void * busMasterThread(void *args)
+{
+  std::cout<<"\n Busmaster thread";
+
+  int i;
+  float data[3];
+  argsStruct* temp =  (argsStruct*) args;
+  uint32_t data_converted[3], result[3];
+  data[0] = (float)temp->latd;
+  data[1] = (float)temp->lond;
+  data[2] = (float)temp->h;
+
+  //ROS_INFO("Spinning busmastr thread");
+ //std::cout << "\nSpinning busmaster thread";
+  //std::cout<<"\n Thread id: "<<temp->id;
+  // std:cout<<"\ndata[0] = "<<data[0];
+  // std::cout<<"\ndata[1] = "<<data[1];
+  // std::cout<<"\ndata[2] = "<<data[2];
+  for( i =0;i<3;i++){
+    data_converted[i] = htonf(data[i]);
+  }
+  // std::cout<<"\ndata_converted[0] = "<<data_converted[0];
+  // std::cout<<"\ndata_converted[1] = "<<data_converted[1];
+  // std::cout<<"\ndata_converted[2] = "<<data_converted[2];
+  
+  int client_socket;
+  int iplen = 15; //XXX.XXX.XXX.XXX
+  struct sockaddr_in remote;
+  client_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  // std::cout << "\nCreated client_socket = "<<client_socket;
+  if (client_socket < 0)
+  {
+  	std::cout<<"\nclient_socket = "<<client_socket;
+    perror("Can't create TCP socket\n");
+    exit(1);
+  }
+  //char *ip = (char *)malloc(iplen + 1);
+  //memset(ip, 0, iplen + 1);
+  //ip=IP;
+  //std::cout<<"\nThe IP: "<<IP;
+   //memset(&remote, 0, sizeof(remote));
+  remote.sin_family = AF_INET;
+  remote.sin_addr.s_addr = inet_addr(IP);
+  remote.sin_port = htons(PORT);
+  int port = PORT;
+  //std::cout<<"\n s_addr:"<<remote.sin_addr.s_addr<<"\n";
+  //std::cout<<"\nConnecting to server at %d",port;
+  if(connect(client_socket, reinterpret_cast<sockaddr*>(&remote), sizeof(remote))<0)  
+  {
+    //fprintf(stderr, "socket() failed: %s\n", strerror(errno));
+    std::cout<<"\nCould not connect to socket";
+    close(client_socket);
+    exit(1);
+  }
+  char *recv_data;
+  //std::cout<<"\nSocket connected";
+  int val;
+  if (send(client_socket, (char *)data_converted, sizeof(data_converted), 0) < 0)
+  {
+   std::cout << "\n Error sending data";
+  }
+  //std::cout << "\nWaiting for results from busmaster ... ";
+  if(recv(client_socket,(char *)result, sizeof(result),0) < 0){
+    std::cout <<"\nError receiving results";
+    //Close connection if no result received
+    free(temp);
+    close(client_socket);
+    return NULL;
+  }
+  //std::cout<<"\nReceived results from busmaster ... ";
+  pthread_mutex_lock(&mutex);
+  *(temp->m_lat) = ntohf(result[0]);
+  *(temp->m_lon) = ntohf(result[1]);
+  *(temp->m_h) = ntohf(result[2]);
+  pthread_mutex_unlock(&mutex);
+  
+  std::cout<<"\nm_lat,m_lon,m_h are "<< *(temp->m_lat) << " " << *(temp->m_lon)<<" " << *(temp->m_h);
+  //std::cout<<"\ntemp->m_lat points to "<< temp->m_lat<<" and the value is  "<< *(temp->m_lat);
+  free(temp);
+  close(client_socket);
+  // pthread_t tid;
+  // tid = pthread_self();
+  thread_finish = 1;
+  //std::cout<<" Thread id: "<<tid;
+  //free(&remote);
+  //pthread_exit(&tid);
+  return NULL;
+}
+
+ void geo_pos_conv::set_llh_nmea_degrees(double latd, double lond, double h)
+{
+
+  void *status;
+  if(BUSMASTER == 0){
+    double lat, lad, lod, lon;
   // 1234.56 -> 12'34.56 -> 12+ 34.56/60
 
-  lad = floor(latd / 100.);
-  lat = latd - lad * 100.;
-  lod = floor(lond / 100.);
-  lon = lond - lod * 100.;
+    lad = floor(latd / 100.);
+    lat = latd - lad * 100.;
+    lod = floor(lond / 100.);
+    lon = lond - lod * 100.;
+    // Changing Longitude and Latitude to Radians
+    m_lat = (lad + lat / 60.0) * M_PI / 180;
+    m_lon = (lod + lon / 60.0) * M_PI / 180;
+    m_h = h;
+    conv_llh2xyz();
+  }
+  else{
+    threadId++;
+    argsStruct*args;
+    args = (argsStruct *)malloc(sizeof(argsStruct));
+    args->latd = (float)latd;
+    args->lond = (float)lond; 
+    args->h = (float)h;
+    args->m_lat = &m_lat;
+    args->m_lon = &m_lon;
+    args->m_h = &m_h;
+    args->id = threadId;
+    //*(args->m_lat)=5.5;
+    // std::cout<<"\n m_lat="<<m_lat;
+    // std::cout<<"\n latd="<< args->latd;
+    // std::cout<<"\n lond="<< args->lond;
+    // std::cout<<"\n h="<<args->h;
+    //cout<<"\n address of m_lat = " << &m_lat;
+    pthread_t th;
+    std::cout<<"\nIn geo_pos_conv::set_llh_nmea_degrees";
+    if (pthread_create(&th, nullptr, busMasterThread, (void*)args ) != 0)
+    {
+      std::cout << "pthread create error";
+    }
+    
+    std::cout<<"\n Thread created ...";  
+    //int ret = pthread_join(th,(void**)&status);
+    //std::cout<<"\n Join status : "<<*(pthread_t*)status;
+    int ret = pthread_detach(th);
+    if(ret != 0){
+      std::cout<<"Detach error";
+    }
+    //free(args);
+    //int ret = pthread_detach(th);
+    // if (ret != 0)
+    // {
+    // std::cout << "detach error";
+    // }ss
+    if(thread_finish == 1)
+   {
+    thread_finish = 0;
+    conv_llh2xyz();
+   } 
+  //pthread_exit(NULL);
+  }
 
-  // Changing Longitude and Latitude to Radians
-  m_lat = (lad + lat / 60.0) * M_PI / 180;
-  m_lon = (lod + lon / 60.0) * M_PI / 180;
-  m_h = h;
-
-  conv_llh2xyz();
 }
 
 void geo_pos_conv::llh_to_xyz(double lat, double lon, double ele)
@@ -230,25 +423,29 @@ void geo_pos_conv::llh_to_xyz(double lat, double lon, double ele)
 
 void geo_pos_conv::conv_llh2xyz(void)
 {
-  double PS;   //
-  double PSo;  //
-  double PDL;  //
-  double Pt;   //
-  double PN;   //
-  double PW;   //
+  double PS;  //
+  double PSo; //
+  double PDL; //
+  double Pt;  //
+  double PN;  //
+  double PW;  //
 
   double PB1, PB2, PB3, PB4, PB5, PB6, PB7, PB8, PB9;
   double PA, PB, PC, PD, PE, PF, PG, PH, PI;
-  double Pe;   //
-  double Pet;  //
-  double Pnn;  //
+  double Pe;  //
+  double Pet; //
+  double Pnn; //
   double AW, FW, Pmo;
 
   Pmo = 0.9999;
-
+  std:cout<<"\n Start of conv_llh2xyz";
+  cout<<"\n conv_llh2xyz m_lat address is "<< &m_lat;
+  std::cout<<"\n m_lat ="<<(float)m_lat;
+  std::cout<<"\n m_lon ="<<(float)m_lon;
+  std::cout<<"\n m_h ="<<(float)m_h;
   /*WGS84 Parameters*/
-  AW = 6378137.0;            // Semimajor Axis
-  FW = 1.0 / 298.257222101;  // 298.257223563 //Geometrical flattening
+  AW = 6378137.0;           // Semimajor Axis
+  FW = 1.0 / 298.257222101; // 298.257223563 //Geometrical flattening
 
   Pe = (double)sqrt(2.0 * FW - pow(FW, 2));
   Pet = (double)sqrt(pow(Pe, 2) / (1.0 - pow(Pe, 2)));
@@ -326,9 +523,11 @@ void geo_pos_conv::conv_llh2xyz(void)
         Pmo;
 
   m_z = m_h;
+  std::cout<<"\n End of conv_llh2xyz";
 }
 
 void geo_pos_conv::conv_xyz2llh(void)
 {
   // n/a
 }
+ 

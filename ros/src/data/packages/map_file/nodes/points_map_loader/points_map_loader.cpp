@@ -34,6 +34,7 @@
 
 #include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <pcl_conversions/pcl_conversions.h>
+#include <pcl/io/pcd_io.h>
 #include <std_msgs/Bool.h>
 #include <tf/transform_listener.h>
 
@@ -221,7 +222,7 @@ bool is_in_area(double x, double y, const Area& area, double m)
 std::string create_location(int x, int y)
 {
 	x -= x % ROUNDING_UNIT;
-	y -= y % ROUNDING_UNIT;
+	y -= y % ROUNDING_UNIT; 
 	return ("data/map/" + std::to_string(y) + "/" + std::to_string(x) + "/pointcloud/");
 }
 
