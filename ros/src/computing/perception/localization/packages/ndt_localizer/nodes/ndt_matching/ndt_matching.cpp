@@ -1097,9 +1097,6 @@ static void points_callback(const sensor_msgs::PointCloud2::ConstPtr& input)
     diff_z = current_pose.z - previous_pose.z;
     diff_yaw = current_pose.yaw - previous_pose.yaw;
     diff = sqrt(diff_x * diff_x + diff_y * diff_y + diff_z * diff_z);
-    cout<<"diff = "<<diff;
-    cout<<"secs = "<<secs;
-    cout<<"current_velocity = "<<current_velocity;
     current_velocity = diff / secs;
     current_velocity_x = diff_x / secs;
     current_velocity_y = diff_y / secs;
